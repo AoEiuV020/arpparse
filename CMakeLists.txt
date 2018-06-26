@@ -5,6 +5,6 @@ set(CMAKE_CXX_STANDARD 11)
 
 include(FindPCAP.cmake)
 
-add_executable(arpparse main.c example.c example.h log.cpp log.h arp.h)
+add_executable(arpparse main.c)
 
 target_link_libraries(arpparse ${PCAP_LIBRARY})
