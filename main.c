@@ -9,6 +9,9 @@
  * 3. 打印到屏幕上的正常，但是打印到日志文件里的内容有缺，
  *    原因是输出到文件的有块缓冲，没有马上输出，然而退出程序是通过ctrl-c强行停止程序，导致没来的及清空输出缓冲，
  *    每行打印后手动调用fflush清空缓冲解决问题，
+ * 4. 一直获取不到arp数据包，
+ *    原因是arp数据包产生的太少，
+ *    手动删除一个arp表中的值再通过ping命令主动请求arp解决问题，
  */
 
 #include <stdio.h>
@@ -37,6 +40,7 @@ typedef struct arphdr {
 } arphdr_t;
 
 
+// 用于打印Mac地址，
 void logMac(FILE *logFile, const unsigned char *buf) {
     fprintf(logFile, "%02X", buf[0]);
     for (int i = 1; i < 6; ++i) {
@@ -44,6 +48,7 @@ void logMac(FILE *logFile, const unsigned char *buf) {
     }
 }
 
+// 用于打印Ip地址,
 void logIp(FILE *logFile, const unsigned char *buf) {
     fprintf(logFile, "%3d", buf[0]);
     for (int i = 1; i < 4; ++i) {
@@ -52,17 +57,20 @@ void logIp(FILE *logFile, const unsigned char *buf) {
 }
 
 void logArp(FILE *logFile, const arphdr_t *arpheader, struct pcap_pkthdr *pkthdr) {
-    logIp(logFile, arpheader->spa);
+    logIp(logFile, arpheader->spa); // 打印源IP地址，
     fprintf(logFile, " ");
-    logMac(logFile, arpheader->sha);
+    logMac(logFile, arpheader->sha); // 打印源Mac地址，
     fprintf(logFile, " ");
-    logIp(logFile, arpheader->tpa);
+    logIp(logFile, arpheader->tpa); // 打印目的IP地址，
     fprintf(logFile, " ");
-    logMac(logFile, arpheader->tha);
+    logMac(logFile, arpheader->tha); // 打印目的Mac地址，
     fprintf(logFile, " ");
 
+    // 打印操作，
     fprintf(logFile, "%s", (ntohs(arpheader->oper) == ARP_REQUEST) ? "请求" : "响应");
     fprintf(logFile, " ");
+
+    // 打印时间，
     char timestr[30]; // 用于存时间的字符串，
     strftime(timestr, 30, "%Y-%m-%d %H:%M:%S", localtime(&(pkthdr->ts.tv_sec)));
     fprintf(logFile, "%s\n", timestr);
