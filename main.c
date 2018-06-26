@@ -63,7 +63,9 @@ void logArp(FILE *logFile, const arphdr_t *arpheader, struct pcap_pkthdr *pkthdr
 
     fprintf(logFile, "%s", (ntohs(arpheader->oper) == ARP_REQUEST) ? "请求" : "响应");
     fprintf(logFile, " ");
-    fprintf(logFile, "%s", ctime(&(pkthdr->ts.tv_sec)));
+    char timestr[30]; // 用于存时间的字符串，
+    strftime(timestr, 30, "%Y-%m-%d %H:%M:%S", localtime(&(pkthdr->ts.tv_sec)));
+    fprintf(logFile, "%s\n", timestr);
     // 刷新缓冲，否则强退时可能没有实际写入日志，
     fflush(logFile);
 }
@@ -73,8 +75,8 @@ int main(int argc, char **argv) {
     bpf_u_int32 net = 0;
     bpf_u_int32 mask = 0;
     struct bpf_program filter; //  用于过滤arp包， 
-    char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t *handle = NULL;   //  管理网卡， 
+    char errbuf[PCAP_ERRBUF_SIZE]; // 用于存错误信息的buffer,
+    pcap_t *handle = NULL;   //  管理网卡，
     struct pcap_pkthdr pkthdr; //  包含时间， 
     const unsigned char *packet = NULL; //  原生数据字节， 
     const char *dev = NULL; //  要抓包的设备， 
