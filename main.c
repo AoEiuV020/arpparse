@@ -37,8 +37,6 @@ typedef struct arphdr {
 } arphdr_t;
 
 
-void logArp(FILE *logFile, const arphdr_t *arpheader, struct pcap_pkthdr *pkthdr);
-
 void logMac(FILE *logFile, const unsigned char *buf) {
     fprintf(logFile, "%02X", buf[0]);
     for (int i = 1; i < 6; ++i) {
