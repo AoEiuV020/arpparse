@@ -1,3 +1,16 @@
+/*
+ * 遇到的问题，
+ * 1. 打开网卡失败，报错显示You don't have permission to capture on that device (socket: Operation not permitted)，
+ *    原因是权限不足，
+ *    通过sudo得到root权限再运行解决问题，
+ * 2. 将pcap_next的返回值为NULL作为退出循环的条件，结果意外跳出循环，
+ *    原因是有过滤数据包时pcap_next的正常返回值可能为NULL，
+ *    改成死循环，pcap_next返回NULL就continue跳过解决问题，
+ * 3. 打印到屏幕上的正常，但是打印到日志文件里的内容有缺，
+ *    原因是输出到文件的有块缓冲，没有马上输出，然而退出程序是通过ctrl-c强行停止程序，导致没来的及清空输出缓冲，
+ *    每行打印后手动调用fflush清空缓冲解决问题，
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -17,10 +30,10 @@ typedef struct arphdr {
     u_char hlen;            //hardware address length
     u_char plen;            //protocol address length
     u_int16_t oper;         //operation code
-    u_char sha[6];          //sendHardware address
-    u_char spa[4];          //sender ip address
-    u_char tha[6];          //target hardware address
-    u_char tpa[4];          //target ip address
+    u_char sha[6];          // 源mac，
+    u_char spa[4];          // 源ip，
+    u_char tha[6];          // 目标mac,
+    u_char tpa[4];          // 目标ip,
 } arphdr_t;
 
 
@@ -53,6 +66,8 @@ void logArp(FILE *logFile, const arphdr_t *arpheader, struct pcap_pkthdr *pkthdr
     fprintf(logFile, "%s", (ntohs(arpheader->oper) == ARP_REQUEST) ? "请求" : "响应");
     fprintf(logFile, " ");
     fprintf(logFile, "%s", ctime(&(pkthdr->ts.tv_sec)));
+    // 刷新缓冲，否则强退时可能没有实际写入日志，
+    fflush(logFile);
 }
 
 int main(int argc, char **argv) {
