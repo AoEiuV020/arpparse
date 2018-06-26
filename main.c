@@ -5,6 +5,7 @@
 #include <pcap.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 #define MAXBYTES2CAPTURE 2048
 #define ARP_REQUEST     1
@@ -23,6 +24,8 @@ typedef struct arphdr {
 } arphdr_t;
 
 
+void logArp(FILE *logFile, const arphdr_t *arpheader, struct pcap_pkthdr *pkthdr);
+
 void logMac(FILE *logFile, const unsigned char *buf) {
     fprintf(logFile, "%02X", buf[0]);
     for (int i = 1; i < 6; ++i) {
@@ -37,10 +40,20 @@ void logIp(FILE *logFile, const unsigned char *buf) {
     }
 }
 
-void logIpAddr(FILE *logFile, struct in_addr buf) {
-    fprintf(logFile, inet_ntoa(buf));
-}
+void logArp(FILE *logFile, const arphdr_t *arpheader, struct pcap_pkthdr *pkthdr) {
+    logIp(logFile, arpheader->spa);
+    fprintf(logFile, " ");
+    logMac(logFile, arpheader->sha);
+    fprintf(logFile, " ");
+    logIp(logFile, arpheader->tpa);
+    fprintf(logFile, " ");
+    logMac(logFile, arpheader->tha);
+    fprintf(logFile, " ");
 
+    fprintf(logFile, "%s", (ntohs(arpheader->oper) == ARP_REQUEST) ? "请求" : "响应");
+    fprintf(logFile, " ");
+    fprintf(logFile, "%s", ctime(&(pkthdr->ts.tv_sec)));
+}
 
 int main(int argc, char **argv) {
     int i = 0;
@@ -53,36 +66,53 @@ int main(int argc, char **argv) {
     const unsigned char *packet = NULL; //  原生数据字节， 
     const char *dev = NULL; //  要抓包的设备， 
     arphdr_t *arpheader = NULL; //  指向arp头， 
-    FILE *logFile = stdout; //  日志文件，暂且直接打印，方便测试， 
-//    dev = pcap_lookupdev(errbuf);
+    FILE *logFile = NULL; //  日志文件，
+
+    // 准备日志文件，
+    char *logFilePath;
     if (argc != 2) {
-        printf("USAGE: arpsniffer <interface>\n");
+        // 不带参数就不打印日志，
+        logFilePath = "/dev/null";
+    } else {
+        // 第一个参数是日志文件路径，
+        logFilePath = argv[1];
+    }
+    logFile = fopen(logFilePath, "w");
+    if (logFile == NULL) {
+        fprintf(stderr, "打开日志文件<%s>失败：%s\n", logFilePath, strerror(errno));
         exit(1);
     }
-    // 暂且通过参数传入设备，方便测试，
-    dev = argv[1];
 
+    // 准备存错误日志的buffer，
     memset(errbuf, 0, PCAP_ERRBUF_SIZE);
-    // 开始抓包，
-    handle = pcap_open_live(argv[1], MAXBYTES2CAPTURE, 0, 512, errbuf);
+
+    // 查询当前活动的网卡，抓这个网卡的包，
+    dev = pcap_lookupdev(errbuf);
+    if (dev == NULL) {
+        fprintf(stderr, "找不到网卡: %s\n", errbuf);
+        exit(1);
+    }
+
+    // 打开网卡，准备开始抓包，
+    handle = pcap_open_live(dev, MAXBYTES2CAPTURE, 0, 512, errbuf);
     if (handle == NULL) {
         fprintf(stderr, "打开网卡<%s>失败: %s\n", dev, errbuf);
         exit(1);
     }
 
-    // look up device network addr and mask
+    // 找网卡的ip和掩码，也就是子网范围，用于过滤数据包，
     if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
         fprintf(stderr, "获取网卡<%s>的子网掩码失败: %s\n", dev, errbuf);
         exit(1);
     }
 
-    // 过滤，只处理arp包，
+    // 过滤，只处理这个网卡的arp包，
     pcap_compile(handle, &filter, "arp", 0, mask);
-
     pcap_setfilter(handle, &filter);
 
     // 死循环抓包，
     while (1) {
+        // 如果是null就跳过，表示不是程序要的包，
         if ((packet = pcap_next(handle, &pkthdr)) == NULL) {
             continue;
         }
@@ -90,18 +120,10 @@ int main(int argc, char **argv) {
         arpheader = (struct arphdr *) (packet + 14); //  数据帧头部长度14,
         // 只处理ipv4的，
         if (ntohs(arpheader->htype) == 1 && ntohs(arpheader->ptype) == 0x0800) {
-            logIp(logFile, arpheader->spa);
-            fprintf(logFile, " ");
-            logMac(logFile, arpheader->sha);
-            fprintf(logFile, " ");
-            logIp(logFile, arpheader->tpa);
-            fprintf(logFile, " ");
-            logMac(logFile, arpheader->tha);
-            fprintf(logFile, " ");
-
-            fprintf(logFile, "%s", (ntohs(arpheader->oper) == ARP_REQUEST) ? "请求" : "响应");
-            fprintf(logFile, " ");
-            fprintf(logFile, "%s", ctime(&pkthdr.ts.tv_sec));
+            // 打印到屏幕，
+            logArp(stdout, arpheader, &pkthdr);
+            // 打印到日志文件，
+            logArp(logFile, arpheader, &pkthdr);
         }
     }
     return 0;
